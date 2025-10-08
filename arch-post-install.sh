@@ -564,13 +564,47 @@ if ! step_completed "theme_config"; then
     mkdir -p /home/$username/.config/gtk-3.0
     mkdir -p /home/$username/.config/gtk-4.0
     
+    # Determine theme names based on what's available
+    gtk_theme_name="Catppuccin-Mocha-Standard-Sapphire-Dark"
+    icon_theme_name="Tela-dark"
+    cursor_theme_name="Vimix-white-cursors"
+    
+    # Check for alternative theme names if manual installation was used
+    if [[ -d "/home/$username/.local/share/themes" ]]; then
+        # Find available Catppuccin theme
+        available_gtk_theme=$(find "/home/$username/.local/share/themes" -maxdepth 1 -name "*Catppuccin*Mocha*" -type d | head -1 | xargs basename 2>/dev/null)
+        if [[ -n "$available_gtk_theme" ]]; then
+            gtk_theme_name="$available_gtk_theme"
+        fi
+    fi
+    
+    if [[ -d "/home/$username/.local/share/icons" ]]; then
+        # Check for Tela or fallback icon themes
+        if [[ -d "/home/$username/.local/share/icons/Tela-dark" ]]; then
+            icon_theme_name="Tela-dark"
+        elif [[ -d "/home/$username/.local/share/icons/Papirus-Dark" ]]; then
+            icon_theme_name="Papirus-Dark"
+        elif [[ -d "/usr/share/icons/Papirus-Dark" ]]; then
+            icon_theme_name="Papirus-Dark"
+        fi
+        
+        # Check for Vimix cursor
+        if [[ -d "/home/$username/.local/share/icons/Vimix-white-cursors" ]]; then
+            cursor_theme_name="Vimix-white-cursors"
+        elif [[ -d "/home/$username/.local/share/icons/Vimix-cursors" ]]; then
+            cursor_theme_name="Vimix-cursors"
+        fi
+    fi
+    
+    print_status "Using themes: GTK=$gtk_theme_name, Icons=$icon_theme_name, Cursor=$cursor_theme_name"
+    
     # GTK 3 configuration
-    cat > /home/$username/.config/gtk-3.0/settings.ini << 'GTKEOF'
+    cat > /home/$username/.config/gtk-3.0/settings.ini << GTKEOF
 [Settings]
-gtk-theme-name=catppuccin-mocha-sapphire-standard+default
-gtk-icon-theme-name=Azure-Glassy-Dark
+gtk-theme-name=$gtk_theme_name
+gtk-icon-theme-name=$icon_theme_name
 gtk-font-name=Cantarell 11
-gtk-cursor-theme-name=Vimix-white-cursors
+gtk-cursor-theme-name=$cursor_theme_name
 gtk-cursor-theme-size=24
 gtk-toolbar-style=GTK_TOOLBAR_BOTH
 gtk-toolbar-icon-size=GTK_ICON_SIZE_LARGE_TOOLBAR
@@ -584,12 +618,12 @@ gtk-xft-hintstyle=hintfull
 GTKEOF
     
     # GTK 4 configuration
-    cat > /home/$username/.config/gtk-4.0/settings.ini << 'GTK4EOF'
+    cat > /home/$username/.config/gtk-4.0/settings.ini << GTK4EOF
 [Settings]
-gtk-theme-name=catppuccin-mocha-sapphire-standard+default
-gtk-icon-theme-name=Azure-Glassy-Dark
+gtk-theme-name=$gtk_theme_name
+gtk-icon-theme-name=$icon_theme_name
 gtk-font-name=Cantarell 11
-gtk-cursor-theme-name=Vimix-white-cursors
+gtk-cursor-theme-name=$cursor_theme_name
 gtk-cursor-theme-size=24
 gtk-application-prefer-dark-theme=1
 GTK4EOF
@@ -597,7 +631,7 @@ GTK4EOF
     # Qt configuration for KDE/SDDM environments
     if [[ "$de_choice" == "2" ]] || [[ "$de_choice" == "5" ]] || [[ "$de_choice" == "6" ]]; then
         mkdir -p /home/$username/.config
-        cat > /home/$username/.config/kdeglobals << 'KDEEOF'
+        cat > /home/$username/.config/kdeglobals << KDEEOF
 [ColorScheme]
 ColorScheme=CatppuccinMochaSapphire
 
@@ -611,7 +645,7 @@ smallestReadableFont=Noto Sans,8,-1,5,50,0,0,0,0,0
 toolBarFont=Noto Sans,10,-1,5,50,0,0,0,0,0
 
 [Icons]
-Theme=Azure-Glassy-Dark
+Theme=$icon_theme_name
 
 [WM]
 activeBackground=116,199,236
@@ -668,11 +702,11 @@ HYPRPAPEREOF
     
     # Set cursor theme system-wide
     mkdir -p /home/$username/.icons/default
-    cat > /home/$username/.icons/default/index.theme << 'CURSOREOF'
+    cat > /home/$username/.icons/default/index.theme << CURSOREOF
 [Icon Theme]
 Name=Default
 Comment=Default Cursor Theme
-Inherits=Vimix-white-cursors
+Inherits=$cursor_theme_name
 CURSOREOF
     
     # Ensure proper ownership
@@ -742,35 +776,113 @@ else
 fi
 
 # Install Catppuccin themes and cursor
-if ! step_completed "theme_install" && command -v yay >/dev/null 2>&1; then
-    print_status "Installing Catppuccin themes and Vimix cursor..."
+if ! step_completed "theme_install"; then
+    print_status "Installing Catppuccin themes and cursor..."
     
-    # Install themes via AUR
-    sudo -u $username bash << 'THEMEEOF'
-    # Install Catppuccin GTK theme
-    yay -S --noconfirm catppuccin-gtk-theme-mocha
-    
-    # Install Catppuccin Qt theme
-    yay -S --noconfirm catppuccin-kde-theme-git
-    
-    # Install Vimix cursor theme
-    yay -S --noconfirm vimix-cursor-theme
-    
-    # Install Azure glassy dark icon theme
-    yay -S --noconfirm azure-glassy-icon-theme
+    # Try yay first if available
+    if command -v yay >/dev/null 2>&1; then
+        print_status "Using yay for theme installation..."
+        if sudo -u $username bash << 'THEMEEOF'
+        # Install themes via AUR
+        yay -S --noconfirm catppuccin-gtk-theme-mocha catppuccin-kde-theme-git vimix-cursor-theme azure-glassy-icon-theme
 THEMEEOF
-    
-    if [[ $? -eq 0 ]]; then
-        print_success "Themes and cursor installed successfully"
-        mark_step_completed "theme_install"
-    else
-        print_error "Theme installation failed - you can install manually later"
-        print_status "Manual installation commands:"
-        echo "  yay -S catppuccin-gtk-theme-mocha catppuccin-kde-theme-git vimix-cursor-theme azure-glassy-icon-theme"
+        then
+            print_success "Themes installed successfully via yay"
+            mark_step_completed "theme_install"
+        else
+            print_warning "yay installation failed, falling back to manual installation..."
+        fi
     fi
-elif ! command -v yay >/dev/null 2>&1; then
-    print_warning "yay not available - skipping theme installation"
-elif step_completed "theme_install"; then
+    
+    # Manual installation if yay failed or not available
+    if ! step_completed "theme_install"; then
+        print_status "Installing themes manually from Git repositories..."
+        
+        # Create theme directories
+        themes_dir="/home/$username/.local/share/themes"
+        icons_dir="/home/$username/.local/share/icons"
+        mkdir -p "$themes_dir" "$icons_dir"
+        
+        # Install Catppuccin GTK theme
+        print_status "Installing Catppuccin GTK theme..."
+        if sudo -u $username git clone https://github.com/catppuccin/gtk.git "$themes_dir/catppuccin-gtk-temp"; then
+            # Copy the Mocha variant
+            if [[ -d "$themes_dir/catppuccin-gtk-temp/themes/Catppuccin-Mocha-Standard-Sapphire-Dark" ]]; then
+                sudo -u $username cp -r "$themes_dir/catppuccin-gtk-temp/themes/Catppuccin-Mocha-Standard-Sapphire-Dark" "$themes_dir/"
+                print_success "Catppuccin GTK theme installed"
+            else
+                # Fallback to any Mocha theme
+                sudo -u $username cp -r "$themes_dir/catppuccin-gtk-temp/themes/"*Mocha* "$themes_dir/" 2>/dev/null || true
+                print_warning "Copied available Mocha themes"
+            fi
+            sudo -u $username rm -rf "$themes_dir/catppuccin-gtk-temp"
+        else
+            print_warning "Failed to download Catppuccin GTK theme"
+        fi
+        
+        # Install Vimix cursor theme
+        print_status "Installing Vimix cursor theme..."
+        if sudo -u $username git clone https://github.com/vinceliuice/Vimix-cursors.git "$icons_dir/vimix-temp"; then
+            cd "$icons_dir/vimix-temp"
+            sudo -u $username ./install.sh -d "$icons_dir"
+            sudo -u $username rm -rf "$icons_dir/vimix-temp"
+            print_success "Vimix cursor theme installed"
+        else
+            print_warning "Failed to download Vimix cursor theme"
+        fi
+        
+        # Install Azure icon theme
+        print_status "Installing Azure icon theme..."
+        if sudo -u $username git clone https://github.com/vinceliuice/Tela-icon-theme.git "$icons_dir/tela-temp"; then
+            cd "$icons_dir/tela-temp"
+            sudo -u $username ./install.sh -a -d "$icons_dir"
+            sudo -u $username rm -rf "$icons_dir/tela-temp"
+            print_success "Tela (Azure-style) icon theme installed"
+        else
+            print_warning "Failed to download Tela icon theme, trying alternative..."
+            
+            # Fallback to Papirus from official repos
+            if pacman -S --noconfirm papirus-icon-theme; then
+                print_success "Installed Papirus icon theme as fallback"
+            else
+                print_warning "Failed to install any icon theme"
+            fi
+        fi
+        
+        # Install KDE theme if needed
+        if [[ "$de_choice" == "2" ]] || [[ "$de_choice" == "5" ]] || [[ "$de_choice" == "6" ]]; then
+            print_status "Installing Catppuccin KDE theme..."
+            kde_themes_dir="/home/$username/.local/share/plasma"
+            mkdir -p "$kde_themes_dir/desktoptheme" "$kde_themes_dir/look-and-feel"
+            
+            if sudo -u $username git clone https://github.com/catppuccin/kde.git "$kde_themes_dir/catppuccin-temp"; then
+                # Install plasma theme
+                if [[ -d "$kde_themes_dir/catppuccin-temp/plasma/desktoptheme" ]]; then
+                    sudo -u $username cp -r "$kde_themes_dir/catppuccin-temp/plasma/desktoptheme/"* "$kde_themes_dir/desktoptheme/" 2>/dev/null || true
+                fi
+                
+                # Install look-and-feel
+                if [[ -d "$kde_themes_dir/catppuccin-temp/plasma/look-and-feel" ]]; then
+                    sudo -u $username cp -r "$kde_themes_dir/catppuccin-temp/plasma/look-and-feel/"* "$kde_themes_dir/look-and-feel/" 2>/dev/null || true
+                fi
+                
+                sudo -u $username rm -rf "$kde_themes_dir/catppuccin-temp"
+                print_success "Catppuccin KDE theme installed"
+            else
+                print_warning "Failed to download Catppuccin KDE theme"
+            fi
+        fi
+        
+        # Set proper ownership
+        chown -R $username:$username "$themes_dir" "$icons_dir"
+        if [[ -d "/home/$username/.local/share/plasma" ]]; then
+            chown -R $username:$username "/home/$username/.local/share/plasma"
+        fi
+        
+        print_success "Manual theme installation completed"
+        mark_step_completed "theme_install"
+    fi
+else
     print_status "Themes already installed (skipping)"
 fi
 
