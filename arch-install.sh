@@ -5,6 +5,24 @@
 
 set -e  # Exit on any error
 
+# State file for tracking installation progress
+STATE_FILE="/tmp/arch-install-state"
+
+# Function to check if a step is completed
+step_completed() {
+    grep -q "^$1=completed$" "$STATE_FILE" 2>/dev/null
+}
+
+# Function to mark a step as completed
+mark_step_completed() {
+    echo "$1=completed" >> "$STATE_FILE"
+}
+
+# Function to get state value
+get_state_value() {
+    grep "^$1=" "$STATE_FILE" 2>/dev/null | cut -d'=' -f2
+}
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -45,43 +63,71 @@ if ! grep -q "archiso" /proc/cmdline 2>/dev/null; then
 fi
 
 # Update system clock
-print_status "Updating system clock..."
-timedatectl set-ntp true
-
-# Display available drives
-print_status "Available drives:"
-lsblk -d -o NAME,SIZE,TYPE | grep disk
-
-echo ""
-read -p "Enter the drive to install to (e.g., sda, nvme0n1): " DRIVE
-
-# Validate drive exists
-if [[ ! -b "/dev/$DRIVE" ]]; then
-    print_error "Drive /dev/$DRIVE does not exist!"
-    exit 1
+if ! step_completed "clock_sync"; then
+    print_status "Updating system clock..."
+    timedatectl set-ntp true
+    mark_step_completed "clock_sync"
+else
+    print_status "System clock already synced (skipping)"
 fi
 
-print_warning "This will COMPLETELY WIPE /dev/$DRIVE"
-read -p "Are you sure you want to continue? (y/N): " confirm
-if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    print_status "Installation cancelled"
-    exit 0
+# Drive selection
+if ! step_completed "drive_selection"; then
+    # Display available drives
+    print_status "Available drives:"
+    lsblk -d -o NAME,SIZE,TYPE | grep disk
+    
+    echo ""
+    read -p "Enter the drive to install to (e.g., sda, nvme0n1): " DRIVE
+    
+    # Validate drive exists
+    if [[ ! -b "/dev/$DRIVE" ]]; then
+        print_error "Drive /dev/$DRIVE does not exist!"
+        exit 1
+    fi
+    
+    print_warning "This will COMPLETELY WIPE /dev/$DRIVE"
+    read -p "Are you sure you want to continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        print_status "Installation cancelled"
+        exit 0
+    fi
+    
+    echo "DRIVE=$DRIVE" >> "$STATE_FILE"
+    mark_step_completed "drive_selection"
+else
+    DRIVE=$(get_state_value "DRIVE")
+    print_status "Using previously selected drive: /dev/$DRIVE (skipping selection)"
 fi
 
 # Get partition sizes
-echo ""
-print_status "Configure partition sizes:"
-echo "Recommended sizes:"
-echo "- EFI: 512M"
-echo "- Root: 30G-50G"
-echo "- Swap: 2G-8G (or equal to RAM for hibernation)"
-echo "- Home: Remaining space"
-echo ""
-
-read -p "EFI partition size (e.g., 512M): " EFI_SIZE
-read -p "Root partition size (e.g., 40G): " ROOT_SIZE
-read -p "Swap partition size (e.g., 4G): " SWAP_SIZE
-read -p "Home partition size (enter 'rest' for remaining space or specific size like 100G): " HOME_SIZE
+if ! step_completed "partition_config"; then
+    echo ""
+    print_status "Configure partition sizes:"
+    echo "Recommended sizes:"
+    echo "- EFI: 512M"
+    echo "- Root: 30G-50G"
+    echo "- Swap: 2G-8G (or equal to RAM for hibernation)"
+    echo "- Home: Remaining space"
+    echo ""
+    
+    read -p "EFI partition size (e.g., 512M): " EFI_SIZE
+    read -p "Root partition size (e.g., 40G): " ROOT_SIZE
+    read -p "Swap partition size (e.g., 4G): " SWAP_SIZE
+    read -p "Home partition size (enter 'rest' for remaining space or specific size like 100G): " HOME_SIZE
+    
+    echo "EFI_SIZE=$EFI_SIZE" >> "$STATE_FILE"
+    echo "ROOT_SIZE=$ROOT_SIZE" >> "$STATE_FILE"
+    echo "SWAP_SIZE=$SWAP_SIZE" >> "$STATE_FILE"
+    echo "HOME_SIZE=$HOME_SIZE" >> "$STATE_FILE"
+    mark_step_completed "partition_config"
+else
+    EFI_SIZE=$(get_state_value "EFI_SIZE")
+    ROOT_SIZE=$(get_state_value "ROOT_SIZE")
+    SWAP_SIZE=$(get_state_value "SWAP_SIZE")
+    HOME_SIZE=$(get_state_value "HOME_SIZE")
+    print_status "Using previous partition configuration (skipping)"
+fi
 
 # Determine partition naming scheme
 if [[ "$DRIVE" =~ nvme ]]; then
@@ -96,80 +142,138 @@ SWAP_PART="/dev/${PART_PREFIX}3"
 HOME_PART="/dev/${PART_PREFIX}4"
 
 # Create partition table and partitions
-print_status "Creating partitions on /dev/$DRIVE..."
-
-# Clear the drive
-sgdisk --zap-all /dev/$DRIVE
-
-# Create GPT partition table
-sgdisk --clear \
-       --new=1:0:+$EFI_SIZE --typecode=1:ef00 --change-name=1:'EFI System' \
-       --new=2:0:+$ROOT_SIZE --typecode=2:8300 --change-name=2:'Linux Root' \
-       --new=3:0:+$SWAP_SIZE --typecode=3:8200 --change-name=3:'Linux Swap' \
-       /dev/$DRIVE
-
-# Create home partition
-if [[ "$HOME_SIZE" == "rest" ]]; then
-    sgdisk --new=4:0:0 --typecode=4:8300 --change-name=4:'Linux Home' /dev/$DRIVE
+if ! step_completed "partitioning"; then
+    print_status "Creating partitions on /dev/$DRIVE..."
+    
+    # Clear the drive
+    sgdisk --zap-all /dev/$DRIVE
+    
+    # Create GPT partition table
+    sgdisk --clear \
+           --new=1:0:+$EFI_SIZE --typecode=1:ef00 --change-name=1:'EFI System' \
+           --new=2:0:+$ROOT_SIZE --typecode=2:8300 --change-name=2:'Linux Root' \
+           --new=3:0:+$SWAP_SIZE --typecode=3:8200 --change-name=3:'Linux Swap' \
+           /dev/$DRIVE
+    
+    # Create home partition
+    if [[ "$HOME_SIZE" == "rest" ]]; then
+        sgdisk --new=4:0:0 --typecode=4:8300 --change-name=4:'Linux Home' /dev/$DRIVE
+    else
+        sgdisk --new=4:0:+$HOME_SIZE --typecode=4:8300 --change-name=4:'Linux Home' /dev/$DRIVE
+    fi
+    
+    # Inform kernel of partition changes
+    partprobe /dev/$DRIVE
+    sleep 2
+    mark_step_completed "partitioning"
 else
-    sgdisk --new=4:0:+$HOME_SIZE --typecode=4:8300 --change-name=4:'Linux Home' /dev/$DRIVE
+    print_status "Partitions already created (skipping)"
 fi
 
-# Inform kernel of partition changes
-partprobe /dev/$DRIVE
-sleep 2
-
 # Format partitions
-print_status "Formatting partitions..."
-mkfs.fat -F32 $EFI_PART
-mkfs.ext4 -F $ROOT_PART
-mkswap $SWAP_PART
-mkfs.ext4 -F $HOME_PART
+if ! step_completed "formatting"; then
+    print_status "Formatting partitions..."
+    mkfs.fat -F32 $EFI_PART
+    mkfs.ext4 -F $ROOT_PART
+    mkswap $SWAP_PART
+    mkfs.ext4 -F $HOME_PART
+    mark_step_completed "formatting"
+else
+    print_status "Partitions already formatted (skipping)"
+fi
 
 # Mount partitions
-print_status "Mounting partitions..."
-mount $ROOT_PART /mnt
-mkdir -p /mnt/boot/efi
-mkdir -p /mnt/home
-mount $EFI_PART /mnt/boot/efi
-mount $HOME_PART /mnt/home
-swapon $SWAP_PART
+if ! step_completed "mounting"; then
+    print_status "Mounting partitions..."
+    mount $ROOT_PART /mnt
+    mkdir -p /mnt/boot/efi
+    mkdir -p /mnt/home
+    mount $EFI_PART /mnt/boot/efi
+    mount $HOME_PART /mnt/home
+    swapon $SWAP_PART
+    mark_step_completed "mounting"
+else
+    print_status "Partitions already mounted (skipping)"
+fi
 
 # Install base system
-print_status "Installing base system..."
-pacstrap /mnt base linux linux-firmware base-devel grub efibootmgr networkmanager nano
+if ! step_completed "base_install"; then
+    print_status "Installing base system..."
+    pacstrap /mnt base linux linux-firmware base-devel grub efibootmgr networkmanager nano
+    mark_step_completed "base_install"
+else
+    print_status "Base system already installed (skipping)"
+fi
 
 # Generate fstab
-print_status "Generating fstab..."
-genfstab -U /mnt >> /mnt/etc/fstab
+if ! step_completed "fstab"; then
+    print_status "Generating fstab..."
+    genfstab -U /mnt >> /mnt/etc/fstab
+    mark_step_completed "fstab"
+else
+    print_status "fstab already generated (skipping)"
+fi
 
 # Get user configuration
-echo ""
-print_status "User Configuration:"
-while true; do
-    read -s -p "Enter root password: " root_password
+if ! step_completed "user_config"; then
     echo ""
-    read -s -p "Confirm root password: " root_password_confirm
+    print_status "User Configuration:"
+    while true; do
+        read -s -p "Enter root password: " root_password
+        echo ""
+        read -s -p "Confirm root password: " root_password_confirm
+        echo ""
+        if [[ "$root_password" == "$root_password_confirm" ]]; then
+            break
+        else
+            print_error "Passwords do not match. Please try again."
+        fi
+    done
+    
+    read -p "Enter username for main user: " username
+    while true; do
+        read -s -p "Enter password for $username: " user_password
+        echo ""
+        read -s -p "Confirm password for $username: " user_password_confirm
+        echo ""
+        if [[ "$user_password" == "$user_password_confirm" ]]; then
+            break
+        else
+            print_error "Passwords do not match. Please try again."
+        fi
+    done
+    
+    echo "username=$username" >> "$STATE_FILE"
+    # Note: passwords are not stored in state file for security
+    mark_step_completed "user_config"
+else
+    username=$(get_state_value "username")
+    print_status "Using previous user configuration: $username (passwords will be re-entered)"
     echo ""
-    if [[ "$root_password" == "$root_password_confirm" ]]; then
-        break
-    else
-        print_error "Passwords do not match. Please try again."
-    fi
-done
-
-read -p "Enter username for main user: " username
-while true; do
-    read -s -p "Enter password for $username: " user_password
-    echo ""
-    read -s -p "Confirm password for $username: " user_password_confirm
-    echo ""
-    if [[ "$user_password" == "$user_password_confirm" ]]; then
-        break
-    else
-        print_error "Passwords do not match. Please try again."
-    fi
-done
+    while true; do
+        read -s -p "Enter root password: " root_password
+        echo ""
+        read -s -p "Confirm root password: " root_password_confirm
+        echo ""
+        if [[ "$root_password" == "$root_password_confirm" ]]; then
+            break
+        else
+            print_error "Passwords do not match. Please try again."
+        fi
+    done
+    
+    while true; do
+        read -s -p "Enter password for $username: " user_password
+        echo ""
+        read -s -p "Confirm password for $username: " user_password_confirm
+        echo ""
+        if [[ "$user_password" == "$user_password_confirm" ]]; then
+            break
+        else
+            print_error "Passwords do not match. Please try again."
+        fi
+    done
+fi
 
 
 # Create chroot script
@@ -219,8 +323,13 @@ EOF
 chmod +x /mnt/config_script.sh
 
 # Run configuration script in chroot
-print_status "Configuring system..."
-arch-chroot /mnt /config_script.sh
+if ! step_completed "system_config"; then
+    print_status "Configuring system..."
+    arch-chroot /mnt /config_script.sh
+    mark_step_completed "system_config"
+else
+    print_status "System already configured (skipping)"
+fi
 
 # Cleanup
 rm /mnt/config_script.sh
@@ -277,6 +386,9 @@ echo ""
 print_status "Now running post-installation configuration..."
 echo "This will configure desktop environment, timezone, hostname, etc."
 echo ""
+
+# Copy state file to new system for post-install script
+cp "$STATE_FILE" /mnt/tmp/arch-install-state 2>/dev/null || true
 
 # Run post-install script in chroot
 if arch-chroot /mnt /arch-post-install.sh; then
