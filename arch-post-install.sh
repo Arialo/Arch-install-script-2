@@ -836,8 +836,12 @@ fi
 if ! step_completed "theme_script_setup"; then
     print_status "Preparing theme setup for first login..."
     
-    # Copy the theme setup script to user's home directory
-    theme_script_source="$(dirname "$0")/arch-theme-setup.sh"
+    # Check if we have the local repository copy, otherwise use script from same directory
+    if [[ -f "/home/$username/arch-install-assets/arch-theme-setup.sh" ]]; then
+        theme_script_source="/home/$username/arch-install-assets/arch-theme-setup.sh"
+    else
+        theme_script_source="$(dirname "$0")/arch-theme-setup.sh"
+    fi
     theme_script_dest="/home/$username/arch-theme-setup.sh"
     
     if [[ -f "$theme_script_source" ]]; then

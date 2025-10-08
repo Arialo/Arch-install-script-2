@@ -66,16 +66,24 @@ else
     print_status "Detected: Generic/Unknown desktop environment"
 fi
 
-# Clone the unified repository
-print_status "Downloading themes and assets..."
-repo_dir="$HOME/.cache/arch-theme-setup"
-rm -rf "$repo_dir"  # Clean any previous downloads
-
-if git clone https://github.com/Arialo/Arch-install-script-2.git "$repo_dir"; then
-    print_success "Repository cloned successfully"
+# Use local repository copy if available, otherwise clone from GitHub
+if [[ -d "$HOME/arch-install-assets" ]]; then
+    print_status "Using local repository copy..."
+    repo_dir="$HOME/arch-install-assets"
+    cleanup_repo=false  # Don't delete the permanent local copy
+    print_success "Using local repository copy"
 else
-    print_error "Failed to clone repository"
-    exit 1
+    print_status "Downloading themes and assets from GitHub..."
+    repo_dir="$HOME/.cache/arch-theme-setup"
+    rm -rf "$repo_dir"  # Clean any previous downloads
+    cleanup_repo=true   # Clean up the temporary download
+    
+    if git clone https://github.com/Arialo/Arch-install-script-2.git "$repo_dir"; then
+        print_success "Repository cloned successfully"
+    else
+        print_error "Failed to clone repository"
+        exit 1
+    fi
 fi
 
 # Create theme directories (they should exist now after first login)
@@ -255,8 +263,10 @@ EOF
 
 print_success "Theme configuration files created"
 
-# Cleanup
-rm -rf "$repo_dir"
+# Cleanup (only if we downloaded a temporary copy)
+if [[ "$cleanup_repo" == true ]]; then
+    rm -rf "$repo_dir"
+fi
 
 # Mark as completed
 touch "$THEME_STATE_FILE"

@@ -189,7 +189,7 @@ if ! step_completed "mounting"; then
     mkdir -p /mnt/boot/efi
     mkdir -p /mnt/home
     mount $EFI_PART /mnt/boot/efi
-    mount $HOME_PART /mnt/home
+    mount $HOME_PART /mnt/home/  # This mounts the home partition to /mnt/home (which becomes /home after chroot)
     swapon $SWAP_PART
     mark_step_completed "mounting"
 else
@@ -334,14 +334,48 @@ fi
 # Cleanup
 rm /mnt/config_script.sh
 
-# Copy post-install script to new system
-print_status "Copying post-installation script..."
-cp "$(dirname "$0")/arch-post-install.sh" /mnt/home/$username/ 2>/dev/null || {
-    print_warning "Could not copy arch-post-install.sh - you'll need to download it separately"
-}
-if [[ -f "/mnt/home/$username/arch-post-install.sh" ]]; then
-    chmod +x /mnt/home/$username/arch-post-install.sh
-    chown $username:$username /mnt/home/$username/arch-post-install.sh
+# Copy installation scripts and assets to new system
+print_status "Copying installation scripts and assets to new system..."
+
+# Copy the entire git repository to preserve all assets
+repo_source_dir="$(dirname "$0")"
+repo_dest_dir="/mnt/home/$username/arch-install-assets"
+
+# Create destination directory
+mkdir -p "$repo_dest_dir"
+
+# Copy all files from the repository
+if cp -r "$repo_source_dir"/* "$repo_dest_dir/" 2>/dev/null; then
+    # Make scripts executable
+    chmod +x "$repo_dest_dir/arch-install.sh" 2>/dev/null || true
+    chmod +x "$repo_dest_dir/arch-post-install.sh" 2>/dev/null || true
+    chmod +x "$repo_dest_dir/arch-theme-setup.sh" 2>/dev/null || true
+    
+    # Set proper ownership
+    chown -R $username:$username "$repo_dest_dir"
+    
+    # Create convenient symlinks in home directory
+    ln -sf "$repo_dest_dir/arch-post-install.sh" "/mnt/home/$username/arch-post-install.sh" 2>/dev/null || true
+    ln -sf "$repo_dest_dir/arch-theme-setup.sh" "/mnt/home/$username/arch-theme-setup.sh" 2>/dev/null || true
+    
+    print_success "Repository and scripts copied to /home/$username/arch-install-assets/"
+    print_status "Convenient symlinks created in home directory"
+else
+    print_warning "Could not copy repository - scripts may not be available"
+    
+    # Fallback: try to copy just the essential scripts
+    cp "$repo_source_dir/arch-post-install.sh" "/mnt/home/$username/" 2>/dev/null || true
+    cp "$repo_source_dir/arch-theme-setup.sh" "/mnt/home/$username/" 2>/dev/null || true
+    
+    if [[ -f "/mnt/home/$username/arch-post-install.sh" ]]; then
+        chmod +x "/mnt/home/$username/arch-post-install.sh"
+        chown $username:$username "/mnt/home/$username/arch-post-install.sh"
+    fi
+    
+    if [[ -f "/mnt/home/$username/arch-theme-setup.sh" ]]; then
+        chmod +x "/mnt/home/$username/arch-theme-setup.sh"
+        chown $username:$username "/mnt/home/$username/arch-theme-setup.sh"
+    fi
 fi
 
 # Also copy to root of new system for chroot execution
