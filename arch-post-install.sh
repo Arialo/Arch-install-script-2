@@ -132,9 +132,47 @@ if ! step_completed "hostname_config"; then
         echo "${prefix}${color}${numbers}"
     }
     
-    default_hostname=$(generate_hostname)
-    echo "Default hostname suggestion: $default_hostname"
-    read -p "Enter new hostname (or press Enter to keep current): " new_hostname
+    # Interactive hostname selection with reroll
+    while true; do
+        default_hostname=$(generate_hostname)
+        echo "Hostname suggestion: $default_hostname"
+        echo "Options:"
+        echo "  1) Use this hostname"
+        echo "  2) Generate another (reroll)"
+        echo "  3) Enter custom hostname"
+        echo "  4) Keep current hostname"
+        
+        read -p "Choose option (1-4): " hostname_choice
+        
+        case $hostname_choice in
+            1)
+                new_hostname="$default_hostname"
+                break
+                ;;
+            2)
+                echo "Generating new hostname..."
+                continue
+                ;;
+            3)
+                read -p "Enter custom hostname: " new_hostname
+                if [[ -n "$new_hostname" ]]; then
+                    break
+                else
+                    print_warning "Empty hostname entered, generating new suggestion..."
+                    continue
+                fi
+                ;;
+            4)
+                new_hostname=""
+                break
+                ;;
+            *)
+                print_warning "Invalid option. Please choose 1-4."
+                continue
+                ;;
+        esac
+    done
+    
     if [[ -n "$new_hostname" ]]; then
         # Validate hostname
         if [[ ! "$new_hostname" =~ ^[a-zA-Z0-9-]+$ ]] || [[ ${#new_hostname} -gt 63 ]]; then
@@ -150,6 +188,8 @@ if ! step_completed "hostname_config"; then
         sed -i "s/127.0.1.1.*/127.0.1.1\t$new_hostname.localdomain\t$new_hostname/" /etc/hosts
         print_success "Hostname set to $new_hostname"
         echo "new_hostname=$new_hostname" >> "$POST_STATE_FILE"
+    else
+        print_status "Keeping current hostname: $current_hostname"
     fi
     mark_step_completed "hostname_config"
 else
@@ -209,23 +249,23 @@ case $de_choice in
         LOGIN_MANAGER="gdm"
         ;;
     2)
-        DE_PACKAGES="plasma kde-applications"
+        DE_PACKAGES="plasma kde-applications sddm"
         LOGIN_MANAGER="sddm"
         ;;
     3)
-        DE_PACKAGES="xfce4 xfce4-goodies"
-        LOGIN_MANAGER="lightdm lightdm-gtk-greeter"
+        DE_PACKAGES="xfce4 xfce4-goodies lightdm lightdm-gtk-greeter"
+        LOGIN_MANAGER="lightdm"
         ;;
     4)
-        DE_PACKAGES="openbox xorg-server xorg-xinit pcmanfm lxappearance tint2 feh xterm"
-        LOGIN_MANAGER="lightdm lightdm-gtk-greeter"
+        DE_PACKAGES="openbox xorg-server xorg-xinit pcmanfm lxappearance tint2 feh xterm lightdm lightdm-gtk-greeter"
+        LOGIN_MANAGER="lightdm"
         ;;
     5)
-        DE_PACKAGES="niri foot wofi waybar"
+        DE_PACKAGES="niri foot wofi waybar sddm"
         LOGIN_MANAGER="sddm"
         ;;
     6)
-        DE_PACKAGES="hyprland kitty wofi waybar hyprpaper hypridle hyprlock"
+        DE_PACKAGES="hyprland kitty wofi waybar hyprpaper hypridle hyprlock sddm xdg-desktop-portal-hyprland polkit-kde-agent qt5-wayland qt6-wayland thunar pipewire wireplumber pipewire-pulse pipewire-alsa"
         LOGIN_MANAGER="sddm"
         ;;
     7)
@@ -341,16 +381,28 @@ NIRIEOF
 fi
 
 if [[ "$de_choice" == "6" ]]; then
-    print_status "Configuring Hyprland..."
     # Hyprland configuration
     mkdir -p /home/$username/.config/hypr
     cat > /home/$username/.config/hypr/hyprland.conf << 'HYPREOF'
 # Monitor configuration
 monitor=,preferred,auto,auto
 
+# Environment variables
+env = XCURSOR_SIZE,24
+env = QT_QPA_PLATFORMTHEME,qt5ct
+env = QT_QPA_PLATFORM,wayland;xcb
+env = GDK_BACKEND,wayland,x11
+env = SDL_VIDEODRIVER,wayland
+env = CLUTTER_BACKEND,wayland
+env = XDG_CURRENT_DESKTOP,Hyprland
+env = XDG_SESSION_TYPE,wayland
+env = XDG_SESSION_DESKTOP,Hyprland
+
 # Execute at launch
 exec-once = waybar
 exec-once = hyprpaper
+exec-once = /usr/lib/polkit-kde-authentication-agent-1
+exec-once = dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 
 # Input configuration
 input {
@@ -367,19 +419,24 @@ general {
     gaps_in = 5
     gaps_out = 20
     border_size = 2
-    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
-    col.inactive_border = rgba(595959aa)
+    col.active_border = rgba(74c7ecff) rgba(89b4faff) 45deg
+    col.inactive_border = rgba(585b70aa)
     layout = dwindle
+    allow_tearing = false
 }
 
 # Decoration
 decoration {
     rounding = 10
+    
     blur {
         enabled = true
         size = 3
         passes = 1
+        
+        vibrancy = 0.1696
     }
+    
     drop_shadow = yes
     shadow_range = 4
     shadow_render_power = 3
@@ -389,7 +446,9 @@ decoration {
 # Animations
 animations {
     enabled = yes
+    
     bezier = myBezier, 0.05, 0.9, 0.1, 1.05
+    
     animation = windows, 1, 7, myBezier
     animation = windowsOut, 1, 7, default, popin 80%
     animation = border, 1, 10, default
@@ -398,16 +457,42 @@ animations {
     animation = workspaces, 1, 6, default
 }
 
+# Layout
+dwindle {
+    pseudotile = yes
+    preserve_split = yes
+}
+
+master {
+    new_is_master = true
+}
+
+# Gestures
+gestures {
+    workspace_swipe = off
+}
+
+# Misc
+misc {
+    force_default_wallpaper = -1
+}
+
+# Window rules
+windowrulev2 = suppress_events_fullscreen, class:.*
+
 # Key bindings
 $mainMod = SUPER
+
+# Application bindings
 bind = $mainMod, T, exec, kitty
 bind = $mainMod, Q, killactive,
 bind = $mainMod, M, exit,
-bind = $mainMod, E, exec, dolphin
+bind = $mainMod, E, exec, thunar
 bind = $mainMod, V, togglefloating,
 bind = $mainMod, D, exec, wofi --show drun
 bind = $mainMod, P, pseudo,
 bind = $mainMod, J, togglesplit,
+bind = $mainMod, F, fullscreen,
 
 # Move focus with mainMod + arrow keys
 bind = $mainMod, left, movefocus, l
@@ -415,12 +500,23 @@ bind = $mainMod, right, movefocus, r
 bind = $mainMod, up, movefocus, u
 bind = $mainMod, down, movefocus, d
 
+# Move focus with mainMod + hjkl
+bind = $mainMod, h, movefocus, l
+bind = $mainMod, l, movefocus, r
+bind = $mainMod, k, movefocus, u
+bind = $mainMod, j, movefocus, d
+
 # Switch workspaces with mainMod + [0-9]
 bind = $mainMod, 1, workspace, 1
 bind = $mainMod, 2, workspace, 2
 bind = $mainMod, 3, workspace, 3
 bind = $mainMod, 4, workspace, 4
 bind = $mainMod, 5, workspace, 5
+bind = $mainMod, 6, workspace, 6
+bind = $mainMod, 7, workspace, 7
+bind = $mainMod, 8, workspace, 8
+bind = $mainMod, 9, workspace, 9
+bind = $mainMod, 0, workspace, 10
 
 # Move active window to a workspace with mainMod + SHIFT + [0-9]
 bind = $mainMod SHIFT, 1, movetoworkspace, 1
@@ -428,10 +524,37 @@ bind = $mainMod SHIFT, 2, movetoworkspace, 2
 bind = $mainMod SHIFT, 3, movetoworkspace, 3
 bind = $mainMod SHIFT, 4, movetoworkspace, 4
 bind = $mainMod SHIFT, 5, movetoworkspace, 5
+bind = $mainMod SHIFT, 6, movetoworkspace, 6
+bind = $mainMod SHIFT, 7, movetoworkspace, 7
+bind = $mainMod SHIFT, 8, movetoworkspace, 8
+bind = $mainMod SHIFT, 9, movetoworkspace, 9
+bind = $mainMod SHIFT, 0, movetoworkspace, 10
+
+# Example special workspace (scratchpad)
+bind = $mainMod, S, togglespecialworkspace, magic
+bind = $mainMod SHIFT, S, movetoworkspace, special:magic
+
+# Scroll through existing workspaces with mainMod + scroll
+bind = $mainMod, mouse_down, workspace, e+1
+bind = $mainMod, mouse_up, workspace, e-1
+
+# Move/resize windows with mainMod + LMB/RMB and dragging
+bindm = $mainMod, mouse:272, movewindow
+bindm = $mainMod, mouse:273, resizewindow
+
+# Volume and brightness controls
+bind = , XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ +5%
+bind = , XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ -5%
+bind = , XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+bind = , XF86AudioPlay, exec, playerctl play-pause
+bind = , XF86AudioPause, exec, playerctl play-pause
+bind = , XF86AudioNext, exec, playerctl next
+bind = , XF86AudioPrev, exec, playerctl previous
 HYPREOF
 
     chown -R $username:$username /home/$username/.config
     print_success "Hyprland configured"
+fi
 fi
 
 # Configure themes for desktop environments
@@ -527,14 +650,19 @@ XFCEEOF
             6) # Hyprland
                 # Update Hyprland config for wallpaper
                 mkdir -p /home/$username/.config/hypr
-                echo "exec-once = hyprpaper" >> /home/$username/.config/hypr/hyprland.conf
                 
                 # Create hyprpaper config
                 cat > /home/$username/.config/hypr/hyprpaper.conf << HYPRPAPEREOF
 preload = $crane_wallpaper
 wallpaper = ,$crane_wallpaper
 splash = false
+ipc = on
 HYPRPAPEREOF
+                
+                # Add wallpaper to Hyprland config if not already present
+                if ! grep -q "exec-once = hyprpaper" /home/$username/.config/hypr/hyprland.conf; then
+                    echo "exec-once = hyprpaper" >> /home/$username/.config/hypr/hyprland.conf
+                fi
                 ;;
         esac
     fi
