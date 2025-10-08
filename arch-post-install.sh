@@ -747,6 +747,36 @@ else
     print_status "Themes already configured (skipping)"
 fi
 
+# Fix home directory permissions for desktop environment compatibility
+if ! step_completed "home_permissions"; then
+    print_status "Setting proper home directory permissions for desktop environments..."
+    
+    # Ensure home directory has correct ownership and permissions
+    chown -R $username:$username "/home/$username"
+    chmod 755 "/home/$username"
+    
+    # Fix common permission issues with desktop directories
+    desktop_dirs=(".config" ".local" ".cache" "Desktop" "Documents" "Downloads" "Pictures" "Videos" "Music")
+    
+    for dir in "${desktop_dirs[@]}"; do
+        if [[ -d "/home/$username/$dir" ]]; then
+            chown -R $username:$username "/home/$username/$dir"
+            chmod -R 755 "/home/$username/$dir"
+        fi
+    done
+    
+    # Create missing desktop directories with proper permissions
+    sudo -u $username mkdir -p "/home/$username/Desktop" "/home/$username/Documents" "/home/$username/Downloads" "/home/$username/Pictures" "/home/$username/Videos" "/home/$username/Music"
+    
+    # Ensure XDG directories are properly configured
+    sudo -u $username mkdir -p "/home/$username/.config" "/home/$username/.local/share" "/home/$username/.cache"
+    
+    print_success "Home directory permissions configured for desktop environment compatibility"
+    mark_step_completed "home_permissions"
+else
+    print_status "Home directory permissions already configured (skipping)"
+fi
+
 # Install AUR helper if requested
 if [[ "$INSTALL_YAY" == true ]] && ! step_completed "yay_install"; then
     print_status "Setting up AUR helper..."
@@ -814,8 +844,12 @@ if ! step_completed "theme_install"; then
         # Create theme directories
         themes_dir="/home/$username/.local/share/themes"
         icons_dir="/home/$username/.local/share/icons"
-        kde_themes_dir="/home/$username/.local/share"
-        mkdir -p "$themes_dir" "$icons_dir" "$kde_themes_dir/color-schemes"
+        color_schemes_dir="/home/$username/.local/share/color-schemes"
+        mkdir -p "$themes_dir" "$icons_dir" "$color_schemes_dir"
+        
+        # Ensure .local directory exists and has proper ownership
+        mkdir -p "/home/$username/.local/share"
+        chown -R $username:$username "/home/$username/.local"
         
         # Install Catppuccin GTK theme
         print_status "Installing Catppuccin GTK theme..."
@@ -862,14 +896,39 @@ if ! step_completed "theme_install"; then
         # Install color schemes
         print_status "Installing Catppuccin color schemes..."
         if [[ -d "$repo_dir/colors" ]]; then
-            sudo -u $username cp -r "$repo_dir/colors"/* "$kde_themes_dir/color-schemes/" 2>/dev/null || true
+            sudo -u $username cp -r "$repo_dir/colors"/* "$color_schemes_dir/" 2>/dev/null || true
             print_success "Catppuccin color schemes installed from repository"
         else
             print_warning "Color schemes not found in repository"
         fi
         
-        # Set proper ownership
-        chown -R $username:$username "$themes_dir" "$icons_dir" "$kde_themes_dir/color-schemes"
+        # Set proper ownership and permissions for all user files
+        print_status "Setting proper ownership and permissions..."
+        
+        # Fix ownership of all theme directories
+        chown -R $username:$username "$themes_dir" "$icons_dir" "$color_schemes_dir"
+        
+        # Fix home directory permissions for KDE/SDDM compatibility
+        chown -R $username:$username "/home/$username"
+        chmod 755 "/home/$username"  # Home directory needs to be readable
+        
+        # Ensure .local and subdirectories have proper permissions
+        chmod -R 755 "/home/$username/.local"
+        
+        # Ensure .config directory exists and has proper permissions
+        mkdir -p "/home/$username/.config"
+        chown -R $username:$username "/home/$username/.config"
+        chmod -R 755 "/home/$username/.config"
+        
+        # Set specific permissions for theme directories
+        find "$themes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
+        find "$themes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+        find "$icons_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
+        find "$icons_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+        find "$color_schemes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
+        find "$color_schemes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+        
+        print_success "Ownership and permissions set correctly for KDE compatibility"
         
         # Cleanup
         sudo -u $username rm -rf "$repo_dir"
