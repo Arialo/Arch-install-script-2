@@ -555,7 +555,6 @@ HYPREOF
     chown -R $username:$username /home/$username/.config
     print_success "Hyprland configured"
 fi
-fi
 
 # Configure themes for desktop environments
 if ! step_completed "theme_config"; then
@@ -679,7 +678,7 @@ CURSOREOF
     # Ensure proper ownership
     chown -R $username:$username /home/$username/.config
     chown -R $username:$username /home/$username/.icons
-    chown -R $username:$username /home/$username/Pictures
+    # Wallpapers are handled in their own download section
     
     print_success "Catppuccin themes configured"
     mark_step_completed "theme_config"
@@ -779,18 +778,20 @@ fi
 if ! step_completed "wallpaper_download"; then
     print_status "Downloading Catppuccin wallpapers..."
     
-    # Create wallpaper directory
-    mkdir -p /home/$username/Pictures/wallpapers
+    # Create custom wallpaper directory structure
+    wallpaper_dir="/home/$username/.local/share/wallpapers"
+    mkdir -p "$wallpaper_dir"
+    chown -R $username:$username "/home/$username/.local"
     
     # Download wallpapers repository
-    if sudo -u $username git clone https://github.com/orangci/walls-catppuccin-mocha.git /home/$username/Pictures/wallpapers/catppuccin-mocha; then
+    if sudo -u $username git clone https://github.com/orangci/walls-catppuccin-mocha.git "$wallpaper_dir/catppuccin-mocha"; then
         print_success "Wallpapers downloaded successfully"
         
         # Set crane wallpaper as default if it exists
-        crane_wallpaper="/home/$username/Pictures/wallpapers/catppuccin-mocha/crane.png"
+        crane_wallpaper="$wallpaper_dir/catppuccin-mocha/crane.png"
         if [[ ! -f "$crane_wallpaper" ]]; then
             # Look for crane wallpaper with different extensions or in subdirectories
-            crane_wallpaper=$(find /home/$username/Pictures/wallpapers/catppuccin-mocha -name "*crane*" -type f | head -1)
+            crane_wallpaper=$(find "$wallpaper_dir/catppuccin-mocha" -name "*crane*" -type f | head -1)
         fi
         
         if [[ -f "$crane_wallpaper" ]]; then
@@ -798,17 +799,19 @@ if ! step_completed "wallpaper_download"; then
             print_success "Found crane wallpaper: $crane_wallpaper"
         else
             print_warning "Crane wallpaper not found - will use first available wallpaper"
-            crane_wallpaper=$(find /home/$username/Pictures/wallpapers/catppuccin-mocha -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" | head -1)
+            crane_wallpaper=$(find "$wallpaper_dir/catppuccin-mocha" -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" | head -1)
             if [[ -f "$crane_wallpaper" ]]; then
                 echo "crane_wallpaper=$crane_wallpaper" >> "$POST_STATE_FILE"
                 print_status "Using wallpaper: $crane_wallpaper"
             fi
         fi
         
+        # Ensure proper ownership
+        chown -R $username:$username "$wallpaper_dir"
         mark_step_completed "wallpaper_download"
     else
         print_error "Failed to download wallpapers"
-        print_status "You can download them manually: git clone https://github.com/orangci/walls-catppuccin-mocha.git"
+        print_status "You can download them manually: git clone https://github.com/orangci/walls-catppuccin-mocha.git ~/.local/share/wallpapers/catppuccin-mocha"
     fi
 else
     print_status "Wallpapers already downloaded (skipping)"
