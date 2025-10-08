@@ -334,12 +334,12 @@ fi
 # Cleanup
 rm /mnt/config_script.sh
 
-# Copy installation scripts and assets to new system
-print_status "Copying installation scripts and assets to new system..."
+# Copy installation scripts and assets to system location
+print_status "Copying installation scripts and assets to system location..."
 
-# Copy the entire git repository to preserve all assets
+# Copy the entire git repository to a system location
 repo_source_dir="$(dirname "$0")"
-repo_dest_dir="/mnt/home/$username/arch-install-assets"
+repo_dest_dir="/mnt/opt/arch-install-assets"
 
 # Create destination directory
 mkdir -p "$repo_dest_dir"
@@ -351,30 +351,35 @@ if cp -r "$repo_source_dir"/* "$repo_dest_dir/" 2>/dev/null; then
     chmod +x "$repo_dest_dir/arch-post-install.sh" 2>/dev/null || true
     chmod +x "$repo_dest_dir/arch-theme-setup.sh" 2>/dev/null || true
     
-    # Set proper ownership
-    chown -R $username:$username "$repo_dest_dir"
+    # Set ownership to user (without group to avoid user not existing error)
+    chown -R $username "$repo_dest_dir" 2>/dev/null || {
+        print_warning "Could not set ownership - files will be owned by root"
+    }
     
     # Create convenient symlinks in home directory
+    mkdir -p "/mnt/home/$username"
     ln -sf "$repo_dest_dir/arch-post-install.sh" "/mnt/home/$username/arch-post-install.sh" 2>/dev/null || true
     ln -sf "$repo_dest_dir/arch-theme-setup.sh" "/mnt/home/$username/arch-theme-setup.sh" 2>/dev/null || true
     
-    print_success "Repository and scripts copied to /home/$username/arch-install-assets/"
+    print_success "Repository and scripts copied to /opt/arch-install-assets/"
     print_status "Convenient symlinks created in home directory"
+    print_success "Assets available system-wide with user ownership"
 else
     print_warning "Could not copy repository - scripts may not be available"
     
-    # Fallback: try to copy just the essential scripts
+    # Fallback: try to copy just the essential scripts to home
+    mkdir -p "/mnt/home/$username"
     cp "$repo_source_dir/arch-post-install.sh" "/mnt/home/$username/" 2>/dev/null || true
     cp "$repo_source_dir/arch-theme-setup.sh" "/mnt/home/$username/" 2>/dev/null || true
     
     if [[ -f "/mnt/home/$username/arch-post-install.sh" ]]; then
         chmod +x "/mnt/home/$username/arch-post-install.sh"
-        chown $username:$username "/mnt/home/$username/arch-post-install.sh"
+        chown $username "/mnt/home/$username/arch-post-install.sh" 2>/dev/null || true
     fi
     
     if [[ -f "/mnt/home/$username/arch-theme-setup.sh" ]]; then
         chmod +x "/mnt/home/$username/arch-theme-setup.sh"
-        chown $username:$username "/mnt/home/$username/arch-theme-setup.sh"
+        chown $username "/mnt/home/$username/arch-theme-setup.sh" 2>/dev/null || true
     fi
 fi
 

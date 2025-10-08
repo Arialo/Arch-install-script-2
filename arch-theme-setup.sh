@@ -66,8 +66,13 @@ else
     print_status "Detected: Generic/Unknown desktop environment"
 fi
 
-# Use local repository copy if available, otherwise clone from GitHub
-if [[ -d "$HOME/arch-install-assets" ]]; then
+# Use system repository copy if available, otherwise try local copy, otherwise clone from GitHub
+if [[ -d "/opt/arch-install-assets" ]]; then
+    print_status "Using system repository copy..."
+    repo_dir="/opt/arch-install-assets"
+    cleanup_repo=false  # Don't delete the permanent system copy
+    print_success "Using system repository copy"
+elif [[ -d "$HOME/arch-install-assets" ]]; then
     print_status "Using local repository copy..."
     repo_dir="$HOME/arch-install-assets"
     cleanup_repo=false  # Don't delete the permanent local copy
