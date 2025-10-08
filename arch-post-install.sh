@@ -631,13 +631,31 @@ GTK4EOF
     # Qt configuration for KDE/SDDM environments
     if [[ "$de_choice" == "2" ]] || [[ "$de_choice" == "5" ]] || [[ "$de_choice" == "6" ]]; then
         mkdir -p /home/$username/.config
+        # Use authentic Catppuccin color scheme if available, otherwise use basic config
+        catppuccin_color_scheme="CatppuccinMochaSapphire"
+        
+        # Check if Catppuccin color schemes were installed
+        if [[ -f "/home/$username/.local/share/color-schemes/CatppuccinMochaSapphire.colors" ]]; then
+            catppuccin_color_scheme="CatppuccinMochaSapphire"
+        elif [[ -f "/home/$username/.local/share/color-schemes/CatppuccinMocha.colors" ]]; then
+            catppuccin_color_scheme="CatppuccinMocha"
+        else
+            # Find any Catppuccin Mocha color scheme
+            available_scheme=$(find "/home/$username/.local/share/color-schemes" -name "*Catppuccin*Mocha*.colors" | head -1 | xargs basename -s .colors 2>/dev/null)
+            if [[ -n "$available_scheme" ]]; then
+                catppuccin_color_scheme="$available_scheme"
+            fi
+        fi
+        
+        print_status "Using color scheme: $catppuccin_color_scheme"
+        
         cat > /home/$username/.config/kdeglobals << KDEEOF
 [ColorScheme]
-ColorScheme=CatppuccinMochaSapphire
+ColorScheme=$catppuccin_color_scheme
 
 [General]
-ColorScheme=CatppuccinMochaSapphire
-Name=Catppuccin Mocha Sapphire
+ColorScheme=$catppuccin_color_scheme
+Name=Catppuccin Mocha
 fixed=Fira Code,10,-1,5,50,0,0,0,0,0
 font=Noto Sans,10,-1,5,50,0,0,0,0,0
 menuFont=Noto Sans,10,-1,5,50,0,0,0,0,0
@@ -647,12 +665,21 @@ toolBarFont=Noto Sans,10,-1,5,50,0,0,0,0,0
 [Icons]
 Theme=$icon_theme_name
 
-[WM]
-activeBackground=116,199,236
-activeForeground=205,214,244
-inactiveBackground=49,50,68
-inactiveForeground=147,153,178
+[KDE]
+lookAndFeelPackage=Catppuccin-Mocha-Sapphire
+
 KDEEOF
+        
+        # Set the color scheme and look-and-feel in KDE config
+        mkdir -p "/home/$username/.config/plasma-org.kde.plasma.desktop-appletsrc.d"
+        
+        # Create kdeglobals color scheme reference
+        if [[ -f "/home/$username/.local/share/color-schemes/$catppuccin_color_scheme.colors" ]]; then
+            cat > "/home/$username/.config/kcmcolorsrc" << COLOREOF
+[Theme]
+ColorScheme=$catppuccin_color_scheme
+COLOREOF
+        fi
     fi
     
     # Set wallpaper based on desktop environment
@@ -775,155 +802,133 @@ else
     print_status "LibreWolf already installed (skipping)"
 fi
 
-# Install Catppuccin themes and cursor
+# Install themes and assets from unified repository
 if ! step_completed "theme_install"; then
-    print_status "Installing Catppuccin themes and cursor..."
+    print_status "Installing themes and assets from unified repository..."
     
-    # Try yay first if available
-    if command -v yay >/dev/null 2>&1; then
-        print_status "Using yay for theme installation..."
-        if sudo -u $username bash << 'THEMEEOF'
-        # Install themes via AUR
-        yay -S --noconfirm catppuccin-gtk-theme-mocha catppuccin-kde-theme-git vimix-cursor-theme azure-glassy-icon-theme
-THEMEEOF
-        then
-            print_success "Themes installed successfully via yay"
-            mark_step_completed "theme_install"
-        else
-            print_warning "yay installation failed, falling back to manual installation..."
-        fi
-    fi
-    
-    # Manual installation if yay failed or not available
-    if ! step_completed "theme_install"; then
-        print_status "Installing themes manually from Git repositories..."
+    # Clone the unified repository
+    repo_dir="/tmp/arch-install-assets"
+    if sudo -u $username git clone https://github.com/Arialo/Arch-install-script-2.git "$repo_dir"; then
+        print_success "Repository cloned successfully"
         
         # Create theme directories
         themes_dir="/home/$username/.local/share/themes"
         icons_dir="/home/$username/.local/share/icons"
-        mkdir -p "$themes_dir" "$icons_dir"
+        kde_themes_dir="/home/$username/.local/share"
+        mkdir -p "$themes_dir" "$icons_dir" "$kde_themes_dir/color-schemes"
         
         # Install Catppuccin GTK theme
         print_status "Installing Catppuccin GTK theme..."
-        if sudo -u $username git clone https://github.com/catppuccin/gtk.git "$themes_dir/catppuccin-gtk-temp"; then
-            # Copy the Mocha variant
-            if [[ -d "$themes_dir/catppuccin-gtk-temp/themes/Catppuccin-Mocha-Standard-Sapphire-Dark" ]]; then
-                sudo -u $username cp -r "$themes_dir/catppuccin-gtk-temp/themes/Catppuccin-Mocha-Standard-Sapphire-Dark" "$themes_dir/"
-                print_success "Catppuccin GTK theme installed"
-            else
-                # Fallback to any Mocha theme
-                sudo -u $username cp -r "$themes_dir/catppuccin-gtk-temp/themes/"*Mocha* "$themes_dir/" 2>/dev/null || true
-                print_warning "Copied available Mocha themes"
+        if [[ -f "$repo_dir/Catppuccin-gtk-main.zip" ]]; then
+            cd "/tmp"
+            sudo -u $username unzip -q "$repo_dir/Catppuccin-gtk-main.zip"
+            if [[ -d "/tmp/Catppuccin-gtk-main/themes" ]]; then
+                sudo -u $username cp -r /tmp/Catppuccin-gtk-main/themes/* "$themes_dir/" 2>/dev/null || true
+                sudo -u $username rm -rf "/tmp/Catppuccin-gtk-main"
+                print_success "Catppuccin GTK theme installed from repository"
             fi
-            sudo -u $username rm -rf "$themes_dir/catppuccin-gtk-temp"
         else
-            print_warning "Failed to download Catppuccin GTK theme"
+            print_warning "Catppuccin GTK theme not found in repository"
         fi
         
         # Install Vimix cursor theme
         print_status "Installing Vimix cursor theme..."
-        if sudo -u $username git clone https://github.com/vinceliuice/Vimix-cursors.git "$icons_dir/vimix-temp"; then
-            cd "$icons_dir/vimix-temp"
-            sudo -u $username ./install.sh -d "$icons_dir"
-            sudo -u $username rm -rf "$icons_dir/vimix-temp"
-            print_success "Vimix cursor theme installed"
+        if [[ -f "$repo_dir/Vimix-cursors-master.zip" ]]; then
+            cd "/tmp"
+            sudo -u $username unzip -q "$repo_dir/Vimix-cursors-master.zip"
+            if [[ -d "/tmp/Vimix-cursors-master" ]]; then
+                cd "/tmp/Vimix-cursors-master"
+                sudo -u $username ./install.sh -d "$icons_dir" 2>/dev/null || {
+                    # Manual installation if script fails
+                    sudo -u $username cp -r dist/* "$icons_dir/" 2>/dev/null || true
+                }
+                sudo -u $username rm -rf "/tmp/Vimix-cursors-master"
+                print_success "Vimix cursor theme installed from repository"
+            fi
         else
-            print_warning "Failed to download Vimix cursor theme"
+            print_warning "Vimix cursor theme not found in repository"
         fi
         
-        # Install Azure icon theme
-        print_status "Installing Azure icon theme..."
-        if sudo -u $username git clone https://github.com/vinceliuice/Tela-icon-theme.git "$icons_dir/tela-temp"; then
-            cd "$icons_dir/tela-temp"
-            sudo -u $username ./install.sh -a -d "$icons_dir"
-            sudo -u $username rm -rf "$icons_dir/tela-temp"
-            print_success "Tela (Azure-style) icon theme installed"
+        # Install Azure Glassy Dark icons
+        print_status "Installing Azure Glassy Dark icons..."
+        if [[ -f "$repo_dir/Azure-Glassy-Dark-icons.tar.gz" ]]; then
+            cd "$icons_dir"
+            sudo -u $username tar -xzf "$repo_dir/Azure-Glassy-Dark-icons.tar.gz" 2>/dev/null || true
+            print_success "Azure Glassy Dark icons installed from repository"
         else
-            print_warning "Failed to download Tela icon theme, trying alternative..."
-            
-            # Fallback to Papirus from official repos
-            if pacman -S --noconfirm papirus-icon-theme; then
-                print_success "Installed Papirus icon theme as fallback"
-            else
-                print_warning "Failed to install any icon theme"
-            fi
+            print_warning "Azure Glassy Dark icons not found in repository"
         fi
         
-        # Install KDE theme if needed
-        if [[ "$de_choice" == "2" ]] || [[ "$de_choice" == "5" ]] || [[ "$de_choice" == "6" ]]; then
-            print_status "Installing Catppuccin KDE theme..."
-            kde_themes_dir="/home/$username/.local/share/plasma"
-            mkdir -p "$kde_themes_dir/desktoptheme" "$kde_themes_dir/look-and-feel"
-            
-            if sudo -u $username git clone https://github.com/catppuccin/kde.git "$kde_themes_dir/catppuccin-temp"; then
-                # Install plasma theme
-                if [[ -d "$kde_themes_dir/catppuccin-temp/plasma/desktoptheme" ]]; then
-                    sudo -u $username cp -r "$kde_themes_dir/catppuccin-temp/plasma/desktoptheme/"* "$kde_themes_dir/desktoptheme/" 2>/dev/null || true
-                fi
-                
-                # Install look-and-feel
-                if [[ -d "$kde_themes_dir/catppuccin-temp/plasma/look-and-feel" ]]; then
-                    sudo -u $username cp -r "$kde_themes_dir/catppuccin-temp/plasma/look-and-feel/"* "$kde_themes_dir/look-and-feel/" 2>/dev/null || true
-                fi
-                
-                sudo -u $username rm -rf "$kde_themes_dir/catppuccin-temp"
-                print_success "Catppuccin KDE theme installed"
-            else
-                print_warning "Failed to download Catppuccin KDE theme"
-            fi
+        # Install color schemes
+        print_status "Installing Catppuccin color schemes..."
+        if [[ -d "$repo_dir/colors" ]]; then
+            sudo -u $username cp -r "$repo_dir/colors"/* "$kde_themes_dir/color-schemes/" 2>/dev/null || true
+            print_success "Catppuccin color schemes installed from repository"
+        else
+            print_warning "Color schemes not found in repository"
         fi
         
         # Set proper ownership
-        chown -R $username:$username "$themes_dir" "$icons_dir"
-        if [[ -d "/home/$username/.local/share/plasma" ]]; then
-            chown -R $username:$username "/home/$username/.local/share/plasma"
-        fi
+        chown -R $username:$username "$themes_dir" "$icons_dir" "$kde_themes_dir/color-schemes"
         
-        print_success "Manual theme installation completed"
+        # Cleanup
+        sudo -u $username rm -rf "$repo_dir"
+        
+        print_success "All themes and assets installed from unified repository"
         mark_step_completed "theme_install"
+    else
+        print_error "Failed to clone unified repository"
+        print_status "Falling back to yay installation..."
+        
+        # Fallback to yay if repository fails
+        if command -v yay >/dev/null 2>&1; then
+            if sudo -u $username yay -S --noconfirm catppuccin-gtk-theme-mocha vimix-cursor-theme papirus-icon-theme; then
+                print_success "Fallback theme installation completed via yay"
+                mark_step_completed "theme_install"
+            else
+                print_warning "Both repository and yay installation failed"
+            fi
+        else
+            print_warning "Repository failed and yay not available - themes may be missing"
+        fi
     fi
 else
     print_status "Themes already installed (skipping)"
 fi
 
-# Download Catppuccin wallpapers
+# Download wallpaper from unified repository
 if ! step_completed "wallpaper_download"; then
-    print_status "Downloading Catppuccin wallpapers..."
+    print_status "Setting up wallpaper from unified repository..."
     
     # Create custom wallpaper directory structure
     wallpaper_dir="/home/$username/.local/share/wallpapers"
     mkdir -p "$wallpaper_dir"
     chown -R $username:$username "/home/$username/.local"
     
-    # Download wallpapers repository
-    if sudo -u $username git clone https://github.com/orangci/walls-catppuccin-mocha.git "$wallpaper_dir/catppuccin-mocha"; then
-        print_success "Wallpapers downloaded successfully"
+    # Clone repository temporarily to get wallpaper
+    repo_dir="/tmp/arch-install-wallpaper"
+    if sudo -u $username git clone https://github.com/Arialo/Arch-install-script-2.git "$repo_dir"; then
+        print_success "Repository cloned for wallpaper"
         
-        # Set crane wallpaper as default if it exists
-        crane_wallpaper="$wallpaper_dir/catppuccin-mocha/crane.png"
-        if [[ ! -f "$crane_wallpaper" ]]; then
-            # Look for crane wallpaper with different extensions or in subdirectories
-            crane_wallpaper=$(find "$wallpaper_dir/catppuccin-mocha" -name "*crane*" -type f | head -1)
-        fi
-        
-        if [[ -f "$crane_wallpaper" ]]; then
+        # Copy crane wallpaper from repository
+        if [[ -f "$repo_dir/crane.png" ]]; then
+            sudo -u $username cp "$repo_dir/crane.png" "$wallpaper_dir/"
+            crane_wallpaper="$wallpaper_dir/crane.png"
             echo "crane_wallpaper=$crane_wallpaper" >> "$POST_STATE_FILE"
-            print_success "Found crane wallpaper: $crane_wallpaper"
+            print_success "Crane wallpaper installed from repository: $crane_wallpaper"
         else
-            print_warning "Crane wallpaper not found - will use first available wallpaper"
-            crane_wallpaper=$(find "$wallpaper_dir/catppuccin-mocha" -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" | head -1)
-            if [[ -f "$crane_wallpaper" ]]; then
-                echo "crane_wallpaper=$crane_wallpaper" >> "$POST_STATE_FILE"
-                print_status "Using wallpaper: $crane_wallpaper"
-            fi
+            print_warning "Crane wallpaper not found in repository"
         fi
+        
+        # Cleanup
+        sudo -u $username rm -rf "$repo_dir"
         
         # Ensure proper ownership
         chown -R $username:$username "$wallpaper_dir"
         mark_step_completed "wallpaper_download"
     else
-        print_error "Failed to download wallpapers"
-        print_status "You can download them manually: git clone https://github.com/orangci/walls-catppuccin-mocha.git ~/.local/share/wallpapers/catppuccin-mocha"
+        print_error "Failed to clone repository for wallpaper"
+        print_status "Wallpaper will not be set"
     fi
 else
     print_status "Wallpapers already downloaded (skipping)"
