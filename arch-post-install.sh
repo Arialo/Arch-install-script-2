@@ -126,31 +126,31 @@ fi
 # Set packages based on choice
 case $de_choice in
     1)
-        DE_PACKAGES="gnome gnome-extra librewolf"
+        DE_PACKAGES="gnome gnome-extra "
         LOGIN_MANAGER="gdm"
         ;;
     2)
-        DE_PACKAGES="plasma kde-applications librewolf"
+        DE_PACKAGES="plasma kde-applications "
         LOGIN_MANAGER="sddm"
         ;;
     3)
-        DE_PACKAGES="xfce4 xfce4-goodies librewolf"
+        DE_PACKAGES="xfce4 xfce4-goodies "
         LOGIN_MANAGER="lightdm lightdm-gtk-greeter"
         ;;
     4)
-        DE_PACKAGES="openbox xorg-server xorg-xinit librewolf pcmanfm lxappearance tint2 feh xterm"
+        DE_PACKAGES="openbox xorg-server xorg-xinit  pcmanfm lxappearance tint2 feh xterm"
         LOGIN_MANAGER="lightdm lightdm-gtk-greeter"
         ;;
     5)
-        DE_PACKAGES="niri librewolf foot wofi waybar"
+        DE_PACKAGES="niri  foot wofi waybar"
         LOGIN_MANAGER=""
         ;;
     6)
-        DE_PACKAGES="hyprland librewolf kitty wofi waybar hyprpaper hypridle hyprlock"
+        DE_PACKAGES="hyprland  kitty wofi waybar hyprpaper hypridle hyprlock"
         LOGIN_MANAGER="sddm"
         ;;
     7)
-        DE_PACKAGES="librewolf"
+        DE_PACKAGES=""
         LOGIN_MANAGER=""
         ;;
     8)
@@ -159,7 +159,7 @@ case $de_choice in
         ;;
     *)
         print_error "Invalid selection. Defaulting to GNOME."
-        DE_PACKAGES="gnome gnome-extra librewolf"
+        DE_PACKAGES="gnome gnome-extra "
         LOGIN_MANAGER="gdm"
         ;;
 esac
@@ -206,7 +206,7 @@ OBEOF
     <action name="Execute"><command>pcmanfm</command></action>
   </item>
   <item label="Web Browser">
-    <action name="Execute"><command>librewolf</command></action>
+    <action name="Execute"><command></command></action>
   </item>
   <separator />
   <item label="Log Out">
@@ -405,6 +405,5 @@ fi
 echo "4. Install additional software as needed"
 
 print_warning "Notes:"
-echo "- LibreWolf and other packages should now be available"
 echo "- Login managers will start on next boot"
 echo "- Configuration files have been created for window managers"
