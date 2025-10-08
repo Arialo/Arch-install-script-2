@@ -920,13 +920,21 @@ if ! step_completed "theme_install"; then
         chown -R $username:$username "/home/$username/.config"
         chmod -R 755 "/home/$username/.config"
         
-        # Set specific permissions for theme directories
-        find "$themes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
-        find "$themes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
-        find "$icons_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
-        find "$icons_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
-        find "$color_schemes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
-        find "$color_schemes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+        # Set specific permissions for theme directories (only if they exist)
+        if [[ -d "$themes_dir" ]]; then
+            find "$themes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
+            find "$themes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+        fi
+        
+        if [[ -d "$icons_dir" ]]; then
+            find "$icons_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
+            find "$icons_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+        fi
+        
+        if [[ -d "$color_schemes_dir" ]]; then
+            find "$color_schemes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
+            find "$color_schemes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
+        fi
         
         print_success "Ownership and permissions set correctly for KDE compatibility"
         
