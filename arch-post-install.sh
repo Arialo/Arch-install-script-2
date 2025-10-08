@@ -832,174 +832,48 @@ else
     print_status "LibreWolf already installed (skipping)"
 fi
 
-# Install themes and assets from unified repository
-if ! step_completed "theme_install"; then
-    print_status "Installing themes and assets from unified repository..."
+# Prepare theme setup script for first login
+if ! step_completed "theme_script_setup"; then
+    print_status "Preparing theme setup for first login..."
     
-    # Clone the unified repository
-    repo_dir="/tmp/arch-install-assets"
-    if sudo -u $username git clone https://github.com/Arialo/Arch-install-script-2.git "$repo_dir"; then
-        print_success "Repository cloned successfully"
-        
-        # Create theme directories
-        themes_dir="/home/$username/.local/share/themes"
-        icons_dir="/home/$username/.local/share/icons"
-        color_schemes_dir="/home/$username/.local/share/color-schemes"
-        mkdir -p "$themes_dir" "$icons_dir" "$color_schemes_dir"
-        
-        # Ensure .local directory exists and has proper ownership
-        mkdir -p "/home/$username/.local/share"
-        chown -R $username:$username "/home/$username/.local"
-        
-        # Install Catppuccin GTK theme
-        print_status "Installing Catppuccin GTK theme..."
-        if [[ -f "$repo_dir/Catppuccin-gtk-main.zip" ]]; then
-            cd "/tmp"
-            sudo -u $username unzip -q "$repo_dir/Catppuccin-gtk-main.zip"
-            if [[ -d "/tmp/Catppuccin-gtk-main/themes" ]]; then
-                sudo -u $username cp -r /tmp/Catppuccin-gtk-main/themes/* "$themes_dir/" 2>/dev/null || true
-                sudo -u $username rm -rf "/tmp/Catppuccin-gtk-main"
-                print_success "Catppuccin GTK theme installed from repository"
-            fi
-        else
-            print_warning "Catppuccin GTK theme not found in repository"
-        fi
-        
-        # Install Vimix cursor theme
-        print_status "Installing Vimix cursor theme..."
-        if [[ -f "$repo_dir/Vimix-cursors-master.zip" ]]; then
-            cd "/tmp"
-            sudo -u $username unzip -q "$repo_dir/Vimix-cursors-master.zip"
-            if [[ -d "/tmp/Vimix-cursors-master" ]]; then
-                cd "/tmp/Vimix-cursors-master"
-                sudo -u $username ./install.sh -d "$icons_dir" 2>/dev/null || {
-                    # Manual installation if script fails
-                    sudo -u $username cp -r dist/* "$icons_dir/" 2>/dev/null || true
-                }
-                sudo -u $username rm -rf "/tmp/Vimix-cursors-master"
-                print_success "Vimix cursor theme installed from repository"
-            fi
-        else
-            print_warning "Vimix cursor theme not found in repository"
-        fi
-        
-        # Install Azure Glassy Dark icons
-        print_status "Installing Azure Glassy Dark icons..."
-        if [[ -f "$repo_dir/Azure-Glassy-Dark-icons.tar.gz" ]]; then
-            cd "$icons_dir"
-            sudo -u $username tar -xzf "$repo_dir/Azure-Glassy-Dark-icons.tar.gz" 2>/dev/null || true
-            print_success "Azure Glassy Dark icons installed from repository"
-        else
-            print_warning "Azure Glassy Dark icons not found in repository"
-        fi
-        
-        # Install color schemes
-        print_status "Installing Catppuccin color schemes..."
-        if [[ -d "$repo_dir/colors" ]]; then
-            sudo -u $username cp -r "$repo_dir/colors"/* "$color_schemes_dir/" 2>/dev/null || true
-            print_success "Catppuccin color schemes installed from repository"
-        else
-            print_warning "Color schemes not found in repository"
-        fi
-        
-        # Set proper ownership and permissions for all user files
-        print_status "Setting proper ownership and permissions..."
-        
-        # Fix ownership of all theme directories
-        chown -R $username:$username "$themes_dir" "$icons_dir" "$color_schemes_dir"
-        
-        # Fix home directory permissions for KDE/SDDM compatibility
-        chown -R $username:$username "/home/$username"
-        chmod 755 "/home/$username"  # Home directory needs to be readable
-        
-        # Ensure .local and subdirectories have proper permissions
-        chmod -R 755 "/home/$username/.local"
-        
-        # Ensure .config directory exists and has proper permissions
-        mkdir -p "/home/$username/.config"
-        chown -R $username:$username "/home/$username/.config"
-        chmod -R 755 "/home/$username/.config"
-        
-        # Set specific permissions for theme directories (only if they exist)
-        if [[ -d "$themes_dir" ]]; then
-            find "$themes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
-            find "$themes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
-        fi
-        
-        if [[ -d "$icons_dir" ]]; then
-            find "$icons_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
-            find "$icons_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
-        fi
-        
-        if [[ -d "$color_schemes_dir" ]]; then
-            find "$color_schemes_dir" -type d -exec chmod 755 {} \; 2>/dev/null || true
-            find "$color_schemes_dir" -type f -exec chmod 644 {} \; 2>/dev/null || true
-        fi
-        
-        print_success "Ownership and permissions set correctly for KDE compatibility"
-        
-        # Cleanup
-        sudo -u $username rm -rf "$repo_dir"
-        
-        print_success "All themes and assets installed from unified repository"
-        mark_step_completed "theme_install"
+    # Copy the theme setup script to user's home directory
+    theme_script_source="$(dirname "$0")/arch-theme-setup.sh"
+    theme_script_dest="/home/$username/arch-theme-setup.sh"
+    
+    if [[ -f "$theme_script_source" ]]; then
+        cp "$theme_script_source" "$theme_script_dest"
+        chmod +x "$theme_script_dest"
+        chown $username:$username "$theme_script_dest"
+        print_success "Theme setup script copied to /home/$username/arch-theme-setup.sh"
     else
-        print_error "Failed to clone unified repository"
-        print_status "Falling back to yay installation..."
-        
-        # Fallback to yay if repository fails
-        if command -v yay >/dev/null 2>&1; then
-            if sudo -u $username yay -S --noconfirm catppuccin-gtk-theme-mocha vimix-cursor-theme papirus-icon-theme; then
-                print_success "Fallback theme installation completed via yay"
-                mark_step_completed "theme_install"
-            else
-                print_warning "Both repository and yay installation failed"
-            fi
-        else
-            print_warning "Repository failed and yay not available - themes may be missing"
-        fi
+        print_warning "Theme setup script not found - you'll need to install themes manually"
     fi
+    
+    # Create a desktop entry for easy access
+    mkdir -p "/home/$username/Desktop"
+    cat > "/home/$username/Desktop/Install Themes.desktop" << 'DESKTOPEOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Install Themes
+Comment=Install Catppuccin themes after first login
+Exec=/home/$username/arch-theme-setup.sh
+Icon=preferences-desktop-theme
+Terminal=true
+Categories=Settings;
+EOF
+    
+    chmod +x "/home/$username/Desktop/Install Themes.desktop"
+    chown $username:$username "/home/$username/Desktop/Install Themes.desktop"
+    
+    print_success "Desktop shortcut created for theme installation"
+    mark_step_completed "theme_script_setup"
 else
-    print_status "Themes already installed (skipping)"
+    print_status "Theme setup script already prepared (skipping)"
 fi
 
-# Download wallpaper from unified repository
-if ! step_completed "wallpaper_download"; then
-    print_status "Setting up wallpaper from unified repository..."
-    
-    # Create custom wallpaper directory structure
-    wallpaper_dir="/home/$username/.local/share/wallpapers"
-    mkdir -p "$wallpaper_dir"
-    chown -R $username:$username "/home/$username/.local"
-    
-    # Clone repository temporarily to get wallpaper
-    repo_dir="/tmp/arch-install-wallpaper"
-    if sudo -u $username git clone https://github.com/Arialo/Arch-install-script-2.git "$repo_dir"; then
-        print_success "Repository cloned for wallpaper"
-        
-        # Copy crane wallpaper from repository
-        if [[ -f "$repo_dir/crane.png" ]]; then
-            sudo -u $username cp "$repo_dir/crane.png" "$wallpaper_dir/"
-            crane_wallpaper="$wallpaper_dir/crane.png"
-            echo "crane_wallpaper=$crane_wallpaper" >> "$POST_STATE_FILE"
-            print_success "Crane wallpaper installed from repository: $crane_wallpaper"
-        else
-            print_warning "Crane wallpaper not found in repository"
-        fi
-        
-        # Cleanup
-        sudo -u $username rm -rf "$repo_dir"
-        
-        # Ensure proper ownership
-        chown -R $username:$username "$wallpaper_dir"
-        mark_step_completed "wallpaper_download"
-    else
-        print_error "Failed to clone repository for wallpaper"
-        print_status "Wallpaper will not be set"
-    fi
-else
-    print_status "Wallpapers already downloaded (skipping)"
-fi
+# Note: Wallpaper will be installed by the theme setup script after first login
+print_status "Wallpaper installation deferred to post-login theme setup"
 
 # Final system update
 if ! step_completed "final_update"; then
@@ -1031,9 +905,14 @@ fi
 if [[ "$de_choice" == "6" ]]; then
     echo "3. For Hyprland: select Hyprland session from your login manager"
 fi
-echo "4. Install additional software as needed"
+echo "4. IMPORTANT: Run the theme setup after first login"
+echo "   - Double-click 'Install Themes' on Desktop, OR"
+echo "   - Run: ./arch-theme-setup.sh"
+echo "5. Install additional software as needed"
 
-print_warning "Notes:"
-echo "- LibreWolf and other packages should now be available"
+print_warning "IMPORTANT - Theme Installation:"
+echo "- Themes are NOT installed yet (prevents directory issues)"
+echo "- After first login, desktop directories will exist"
+echo "- Run theme setup script for complete Catppuccin experience"
+echo "- LibreWolf and other packages should be available"
 echo "- Login managers will start on next boot"
-echo "- Configuration files have been created for window managers"
