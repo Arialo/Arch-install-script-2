@@ -171,51 +171,13 @@ while true; do
     fi
 done
 
-# Desktop Environment Selection
-echo ""
-print_status "Desktop Environment Selection:"
-echo "1) GNOME (with GDM)"
-echo "2) KDE Plasma (with SDDM)"
-echo "3) XFCE (with LightDM)"
-echo "4) i3 (with LightDM)"
-echo "5) Minimal (no desktop environment)"
-
-read -p "Select desktop environment (1-5): " de_choice
-
-case $de_choice in
-    1)
-        DE_PACKAGES="gnome gnome-extra"
-        LOGIN_MANAGER="gdm"
-        ;;
-    2)
-        DE_PACKAGES="plasma kde-applications"
-        LOGIN_MANAGER="sddm"
-        ;;
-    3)
-        DE_PACKAGES="xfce4 xfce4-goodies"
-        LOGIN_MANAGER="lightdm lightdm-gtk-greeter"
-        ;;
-    4)
-        DE_PACKAGES="i3-wm i3status i3lock dmenu xorg-server xorg-xinit"
-        LOGIN_MANAGER="lightdm lightdm-gtk-greeter"
-        ;;
-    5)
-        DE_PACKAGES=""
-        LOGIN_MANAGER=""
-        ;;
-    *)
-        print_error "Invalid selection. Defaulting to GNOME."
-        DE_PACKAGES="gnome gnome-extra"
-        LOGIN_MANAGER="gdm"
-        ;;
-esac
 
 # Create chroot script
 print_status "Creating configuration script..."
 cat > /mnt/config_script.sh << EOF
 #!/bin/bash
 
-# Set timezone
+# Set timezone (default to UTC)
 ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 hwclock --systohc
 
@@ -224,7 +186,7 @@ echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
-# Set hostname
+# Set hostname (default)
 echo "archlinux" > /etc/hostname
 
 # Configure hosts file
@@ -251,19 +213,6 @@ grub-mkconfig -o /boot/grub/grub.cfg
 # Enable NetworkManager
 systemctl enable NetworkManager
 
-# Install desktop environment if selected
-if [[ -n "$DE_PACKAGES" ]]; then
-    pacman -Sy --noconfirm $DE_PACKAGES
-fi
-
-# Enable login manager if selected
-if [[ -n "$LOGIN_MANAGER" ]]; then
-    systemctl enable \$(echo $LOGIN_MANAGER | cut -d' ' -f1)
-fi
-
-# Install additional packages
-pacman -Sy --noconfirm git wget curl firefox
-
 EOF
 
 # Make script executable
@@ -273,30 +222,50 @@ chmod +x /mnt/config_script.sh
 print_status "Configuring system..."
 arch-chroot /mnt /config_script.sh
 
-# Install AUR helper and librewolf
-print_status "Setting up AUR helper and installing librewolf..."
-arch-chroot /mnt /bin/bash << EOF
-# Switch to user for AUR operations
-sudo -u $username bash << 'USEREOF'
-cd /home/$username
-
-# Install yay (AUR helper)
-git clone https://aur.archlinux.org/yay.git
-cd yay
-makepkg -si --noconfirm
-cd ..
-rm -rf yay
-
-# Install librewolf
-yay -S --noconfirm librewolf-bin
-
-USEREOF
-EOF
-
 # Cleanup
 rm /mnt/config_script.sh
 
-print_success "Installation completed successfully!"
+# Copy post-install script to new system
+print_status "Copying post-installation script..."
+cp "$(dirname "$0")/arch-post-install.sh" /mnt/home/$username/ 2>/dev/null || {
+    print_warning "Could not copy arch-post-install.sh - you'll need to download it separately"
+}
+if [[ -f "/mnt/home/$username/arch-post-install.sh" ]]; then
+    chmod +x /mnt/home/$username/arch-post-install.sh
+    chown $username:$username /mnt/home/$username/arch-post-install.sh
+fi
+
+# Also copy to root of new system for chroot execution
+cp "$(dirname "$0")/arch-post-install.sh" /mnt/arch-post-install.sh 2>/dev/null || {
+    print_error "Could not copy post-install script for automatic execution"
+    print_warning "You'll need to run the post-install script manually after rebooting"
+    
+    print_success "Base installation completed successfully!"
+    print_status "System specifications:"
+    echo "- Drive: /dev/$DRIVE"
+    echo "- EFI: $EFI_SIZE"
+    echo "- Root: $ROOT_SIZE"  
+    echo "- Swap: $SWAP_SIZE"
+    echo "- Home: $HOME_SIZE"
+    echo "- Username: $username"
+    
+    print_status "Next steps:"
+    echo "1. umount -R /mnt"
+    echo "2. reboot"
+    echo "3. Remove the installation media"
+    echo "4. Boot into your new Arch Linux system"
+    echo "5. Log in as root or $username"
+    echo "6. Run: sudo ./arch-post-install.sh"
+    echo ""
+    print_warning "IMPORTANT:"
+    echo "- The base system is installed but NO desktop environment yet"
+    echo "- Run 'arch-post-install.sh' to configure desktop, timezone, hostname, etc."
+    exit 0
+}
+
+chmod +x /mnt/arch-post-install.sh
+
+print_success "Base installation completed successfully!"
 print_status "System specifications:"
 echo "- Drive: /dev/$DRIVE"
 echo "- EFI: $EFI_SIZE"
@@ -304,15 +273,32 @@ echo "- Root: $ROOT_SIZE"
 echo "- Swap: $SWAP_SIZE"
 echo "- Home: $HOME_SIZE"
 echo "- Username: $username"
-echo "- Desktop Environment: $de_choice"
+echo ""
+print_status "Now running post-installation configuration..."
+echo "This will configure desktop environment, timezone, hostname, etc."
+echo ""
 
-print_status "Next steps:"
+# Run post-install script in chroot
+if arch-chroot /mnt /arch-post-install.sh; then
+    print_success "Complete installation finished successfully!"
+    rm /mnt/arch-post-install.sh  # Cleanup
+else
+    print_error "Post-installation configuration failed!"
+    print_warning "Don't worry - your base system is still intact"
+    print_status "You can run the post-install script manually after rebooting:"
+    echo "1. Boot into your new system"
+    echo "2. Log in as root or $username"
+    echo "3. Run: sudo ./arch-post-install.sh"
+    rm /mnt/arch-post-install.sh  # Cleanup
+fi
+
+print_status "Final steps:"
 echo "1. umount -R /mnt"
 echo "2. reboot"
 echo "3. Remove the installation media"
 echo "4. Boot into your new Arch Linux system"
-
-print_warning "Don't forget to:"
-echo "- Configure your timezone: sudo timedatectl set-timezone YOUR_TIMEZONE"
-echo "- Update the system: sudo pacman -Syu"
-echo "- Install additional software as needed"
+echo ""
+print_warning "Note:"
+echo "- If post-installation completed successfully, your system is ready to use"
+echo "- If it failed, you can re-run ./arch-post-install.sh after booting"
+echo "- The post-install script is available in your home directory for future use"
