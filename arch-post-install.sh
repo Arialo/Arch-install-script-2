@@ -68,11 +68,6 @@ if [[ -n "$timezone" ]]; then
 fi
 
 # Hostname configuration
-echo ""
-print_status "Hostname Configuration:"
-current_hostname=$(hostname)
-echo "Current hostname: $current_hostname"
-
 # Generate a fun default hostname
 generate_hostname() {
     local prefixes=("turbo" "hyper" "mystic" "ultra" "mega" "cyber" "nano" "quantum" "stellar" "cosmic")
